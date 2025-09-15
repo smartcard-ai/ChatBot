@@ -1,0 +1,5 @@
+Flask
+gspread
+google-genai
+google-generativeai
+google-auth
