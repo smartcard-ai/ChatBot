@@ -1,0 +1,2 @@
+For run the PHP server just hit int the terminal:- php -S localhost:8000 index.php
+And for the flask just hit int the terminal:- python app.py

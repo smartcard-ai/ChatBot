@@ -131,15 +131,22 @@ def chat():
 @app.route('/save_chatbot', methods=['POST'])
 def save_chatbot():
     selected_sheets = request.form.getlist('selected_sheets')
+    username = request.form['username']
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    cursor.execute("SELECT password FROM chatbots WHERE username=?", (username,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found"}), 400
+    password = row[0]
     cursor.execute("""
         INSERT OR REPLACE INTO chatbots (id, username, password, chatbot_name, gemini_api_key, gemini_model, sheet_id, selected_sheets, service_account_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         request.form['chatbot_id'],
-        request.form['username'],
-        request.form['password'],
+        username,
+        password,
         request.form['chatbot_name'],
         request.form['gemini_api_key'],
         request.form['gemini_model'],
