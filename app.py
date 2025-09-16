@@ -3,6 +3,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 from google import genai
 import sqlite3
+import pymysql
+import psycopg2
+import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS, cross_origin
 
@@ -15,6 +18,8 @@ worksheets = []
 spreadsheet = None
 gc = None
 gemini_client = None
+db_conn = None
+selected_tables = []
 
 DB_FILE = "chatbots.db"
 
@@ -28,16 +33,24 @@ def init_db():
             password TEXT
         )
     """)
+    cursor.execute("DROP TABLE IF EXISTS chatbots")
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chatbots (
+        CREATE TABLE chatbots (
             id TEXT PRIMARY KEY,
             username TEXT,
             chatbot_name TEXT,
             gemini_api_key TEXT,
             gemini_model TEXT,
+            data_source TEXT,
             sheet_id TEXT,
             selected_sheets TEXT,
-            service_account_json TEXT
+            service_account_json TEXT,
+            db_host TEXT,
+            db_port INTEGER,
+            db_name TEXT,
+            db_username TEXT,
+            db_password TEXT,
+            selected_tables TEXT
         )
     """)
     conn.commit()
@@ -81,42 +94,108 @@ def login():
     conn.close()
     return jsonify({"success": False, "message": "Invalid credentials"}), 400
 
-# --- Set credentials and list sheets ---
+# --- Set credentials and list items ---
 @app.route('/set_credentials', methods=['POST'])
 def set_credentials():
-    global CONFIG, gc, spreadsheet, gemini_client
+    global CONFIG, gc, spreadsheet, gemini_client, db_conn
     CONFIG = request.form.to_dict()
+    data_source = CONFIG.get('data_source')
 
-    try:
-        service_json = json.loads(CONFIG['service_account_json'])
-    except Exception as e:
-        return jsonify({'error': 'Invalid Service Account JSON'}), 400
-
-    creds = Credentials.from_service_account_info(service_json, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
-    gc = gspread.authorize(creds)
-    spreadsheet = gc.open_by_key(CONFIG['sheet_id'])
     gemini_client = genai.Client(api_key=CONFIG['gemini_api_key'])
-    sheet_names = [ws.title for ws in spreadsheet.worksheets()]
-    return jsonify({'sheets': sheet_names})
 
-# --- Set selected sheets ---
-@app.route('/set_sheet', methods=['POST'])
-def set_sheet():
-    global worksheets
-    selected = request.form.getlist('sheet_names')
-    worksheets[:] = [spreadsheet.worksheet(name) for name in selected]
-    return jsonify({'selected_sheets': selected})
+    if data_source == 'google_sheets':
+        try:
+            service_json = json.loads(CONFIG['service_account_json'])
+        except Exception as e:
+            return jsonify({'error': 'Invalid Service Account JSON'}), 400
+
+        creds = Credentials.from_service_account_info(service_json, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
+        gc = gspread.authorize(creds)
+        spreadsheet = gc.open_by_key(CONFIG['sheet_id'])
+        items = [ws.title for ws in spreadsheet.worksheets()]
+        return jsonify({'type': 'sheets', 'items': items})
+
+    elif data_source == 'mysql':
+        try:
+            db_conn = pymysql.connect(
+                host=CONFIG['db_host'],
+                port=int(CONFIG['db_port']),
+                user=CONFIG['db_username'],
+                password=CONFIG['db_password'],
+                database=CONFIG['db_name']
+            )
+            cursor = db_conn.cursor()
+            cursor.execute("SHOW TABLES")
+            items = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return jsonify({'type': 'tables', 'items': items})
+        except Exception as e:
+            return jsonify({'error': f'MySQL connection failed: {str(e)}'}), 400
+
+    elif data_source == 'postgresql':
+        try:
+            db_conn = psycopg2.connect(
+                host=CONFIG['db_host'],
+                port=int(CONFIG['db_port']),
+                user=CONFIG['db_username'],
+                password=CONFIG['db_password'],
+                database=CONFIG['db_name']
+            )
+            cursor = db_conn.cursor()
+            cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")
+            items = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return jsonify({'type': 'tables', 'items': items})
+        except Exception as e:
+            return jsonify({'error': f'PostgreSQL connection failed: {str(e)}'}), 400
+
+    else:
+        return jsonify({'error': 'Invalid data source'}), 400
+
+# --- Set selected items ---
+@app.route('/set_items', methods=['POST'])
+def set_items():
+    global worksheets, selected_tables, CONFIG
+    data_source = CONFIG.get('data_source')
+    selected = request.form.getlist('item_names')
+
+    if data_source == 'google_sheets':
+        worksheets[:] = [spreadsheet.worksheet(name) for name in selected]
+        selected_tables = []
+    else:
+        selected_tables = selected
+        worksheets = []
+
+    return jsonify({'selected_items': selected})
 
 # --- Chat endpoint ---
 @app.route('/chat', methods=['POST'])
 def chat():
-    global worksheets, CONFIG, gemini_client
-    if not worksheets:
+    global worksheets, selected_tables, CONFIG, gemini_client, db_conn
+    data_source = CONFIG.get('data_source')
+
+    if data_source == 'google_sheets' and not worksheets:
         return jsonify({'response': 'Select at least one sheet first.'})
+    elif data_source in ['mysql', 'postgresql'] and not selected_tables:
+        return jsonify({'response': 'Select at least one table first.'})
 
     user_input = request.json.get('message')
-    all_data = {ws.title: ws.get_all_records() for ws in worksheets}
-    prompt = f"You are an assistant. Spreadsheet data: {json.dumps(all_data, indent=2)}\nUser: {user_input}\nAnswer:"
+
+    if data_source == 'google_sheets':
+        all_data = {ws.title: ws.get_all_records() for ws in worksheets}
+        data_desc = "Spreadsheet data"
+    else:
+        all_data = {}
+        for table in selected_tables:
+            cursor = db_conn.cursor()
+            cursor.execute(f"SELECT * FROM {table}")
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            all_data[table] = [dict(zip(columns, row)) for row in rows]
+            cursor.close()
+        data_desc = "Database data"
+
+    prompt = f"You are an assistant. {data_desc}: {json.dumps(all_data, indent=2)}\nUser: {user_input}\nAnswer:"
 
     response = gemini_client.models.generate_content(
         model=CONFIG['gemini_model'],
@@ -132,31 +211,66 @@ def chat():
 # --- Save chatbot ---
 @app.route('/save_chatbot', methods=['POST'])
 def save_chatbot():
-    selected_sheets = request.form.getlist('selected_sheets')
-    username = request.form['username']
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE username=?", (username,))
-    row = cursor.fetchone()
-    if not row:
+    try:
+        # Validation: Check required fields
+        required_fields = ['username', 'chatbot_id', 'chatbot_name', 'gemini_api_key', 'gemini_model']
+        for field in required_fields:
+            if not request.form.get(field):
+                return jsonify({"success": False, "message": f"{field} is required"}), 400
+
+        username = request.form['username']
+        data_source = request.form.get('data_source')
+        selected_items = request.form.getlist('selected_items')
+
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username=?", (username,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"success": False, "message": "User not found"}), 400
+
+        if data_source == 'google_sheets':
+            selected_sheets = json.dumps(selected_items)
+            selected_tables = None
+            db_host = db_port = db_name = db_username = db_password = None
+        else:
+            selected_sheets = None
+            selected_tables = json.dumps(selected_items)
+            db_host = request.form.get('db_host')
+            db_port_str = request.form.get('db_port')
+            db_port = int(db_port_str) if db_port_str else None
+            db_name = request.form.get('db_name')
+            db_username = request.form.get('db_username')
+            db_password = request.form.get('db_password')
+
+        cursor.execute("""
+            INSERT OR REPLACE INTO chatbots (id, username, chatbot_name, gemini_api_key, gemini_model, data_source, sheet_id, selected_sheets, service_account_json, db_host, db_port, db_name, db_username, db_password, selected_tables)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            request.form['chatbot_id'],
+            username,
+            request.form['chatbot_name'],
+            request.form['gemini_api_key'],
+            request.form['gemini_model'],
+            data_source,
+            request.form.get('sheet_id'),
+            selected_sheets,
+            request.form.get('service_account_json'),
+            db_host,
+            db_port,
+            db_name,
+            db_username,
+            db_password,
+            selected_tables
+        ))
+        conn.commit()
         conn.close()
-        return jsonify({"success": False, "message": "User not found"}), 400
-    cursor.execute("""
-        INSERT OR REPLACE INTO chatbots (id, username, chatbot_name, gemini_api_key, gemini_model, sheet_id, selected_sheets, service_account_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        request.form['chatbot_id'],
-        username,
-        request.form['chatbot_name'],
-        request.form['gemini_api_key'],
-        request.form['gemini_model'],
-        request.form['sheet_id'],
-        json.dumps(selected_sheets),
-        request.form['service_account_json']
-    ))
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True})
+        return jsonify({"success": True})
+    except Exception as e:
+        # Logging: Log exceptions
+        logging.error(f"Error saving chatbot: {str(e)}")
+        return jsonify({"success": False, "message": str(e)}), 500
 
 # --- List saved chatbots ---
 @app.route('/list_chatbots', methods=['GET'])

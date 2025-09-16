@@ -122,25 +122,59 @@ if (isset($_GET['logout'])) {
             </div>
         </div>
 
-        <div class="mb-3">
-            <label>Gemini API Key</label>
-            <input type="text" class="form-control" id="gemini_api_key" required>
-        </div>
+    <div class="mb-3">
+        <label>Gemini API Key</label>
+        <input type="text" class="form-control" id="gemini_api_key" required>
+    </div>
 
-        <div class="mb-3">
-            <label>Gemini Model</label>
-            <input type="text" class="form-control" id="gemini_model" value="gemini-2.0-flash" required>
-        </div>
+    <div class="mb-3">
+        <label>Gemini Model</label>
+        <input type="text" class="form-control" id="gemini_model" value="gemini-2.0-flash" required>
+    </div>
 
+    <div class="mb-3">
+        <label>Data Source</label>
+        <select class="form-select" id="data_source" onchange="onDataSourceChange()">
+            <option value="google_sheets" selected>Google Sheets</option>
+            <option value="mysql">MySQL</option>
+            <option value="postgresql">PostgreSQL</option>
+        </select>
+    </div>
+
+    <div id="googleSheetsFields">
         <div class="mb-3">
             <label>Google Spreadsheet ID</label>
-            <input type="text" class="form-control" id="sheet_id" required>
+            <input type="text" class="form-control" id="sheet_id">
         </div>
 
         <div class="mb-3">
             <label>Service Account JSON</label>
-            <textarea class="form-control" id="service_account_json" rows="5" required></textarea>
+            <textarea class="form-control" id="service_account_json" rows="5"></textarea>
         </div>
+    </div>
+
+    <div id="dbFields" style="display:none;">
+        <div class="mb-3">
+            <label>Database Host</label>
+            <input type="text" class="form-control" id="db_host">
+        </div>
+        <div class="mb-3">
+            <label>Database Port</label>
+            <input type="number" class="form-control" id="db_port" value="3306">
+        </div>
+        <div class="mb-3">
+            <label>Database Name</label>
+            <input type="text" class="form-control" id="db_name">
+        </div>
+        <div class="mb-3">
+            <label>Database Username</label>
+            <input type="text" class="form-control" id="db_username">
+        </div>
+        <div class="mb-3">
+            <label>Database Password</label>
+            <input type="password" class="form-control" id="db_password">
+        </div>
+    </div>
 
         <button type="button" class="btn btn-primary mb-3" onclick="connectSpreadsheet()">Connect</button>
 
@@ -153,7 +187,7 @@ if (isset($_GET['logout'])) {
         <h4>Chat Interface</h4>
         <div id="chat"></div>
         <div class="input-group mt-2">
-            <input type="text" id="user_input" class="form-control" placeholder="Ask about spreadsheet...">
+            <input type="text" id="user_input" class="form-control" placeholder="Ask about your data...">
             <button class="btn btn-success" onclick="sendMessage()">Send</button>
         </div>
         <button class="btn btn-success mt-3" onclick="saveChatbot()">Save Chatbot</button>
@@ -207,48 +241,89 @@ function generateID() {
     document.getElementById('chatbot_id').value = 'cb-' + Math.random().toString(36).substring(2,10);
 }
 
-// Connect Service Account and list sheets
+function onDataSourceChange() {
+    const dataSource = document.getElementById('data_source').value;
+    const googleFields = document.getElementById('googleSheetsFields');
+    const dbFields = document.getElementById('dbFields');
+    if (dataSource === 'google_sheets') {
+        googleFields.style.display = 'block';
+        dbFields.style.display = 'none';
+    } else {
+        googleFields.style.display = 'none';
+        dbFields.style.display = 'block';
+        if (dataSource === 'mysql') {
+            document.getElementById('db_port').value = '3306';
+        } else if (dataSource === 'postgresql') {
+            document.getElementById('db_port').value = '5432';
+        }
+    }
+}
+
+// Connect and list items
 async function connectSpreadsheet() {
+    const dataSource = document.getElementById('data_source').value;
     const data = new URLSearchParams({
         username:"<?= $_SESSION['username'] ?>",
         chatbot_name: document.getElementById('chatbot_name').value,
         chatbot_id: document.getElementById('chatbot_id').value,
         gemini_api_key: document.getElementById('gemini_api_key').value,
         gemini_model: document.getElementById('gemini_model').value,
-        sheet_id: document.getElementById('sheet_id').value,
-        service_account_json: document.getElementById('service_account_json').value
+        data_source: dataSource
     });
 
+    if (dataSource === 'google_sheets') {
+        data.append('sheet_id', document.getElementById('sheet_id').value);
+        data.append('service_account_json', document.getElementById('service_account_json').value);
+    } else {
+        data.append('db_host', document.getElementById('db_host').value);
+        data.append('db_port', document.getElementById('db_port').value);
+        data.append('db_name', document.getElementById('db_name').value);
+        data.append('db_username', document.getElementById('db_username').value);
+        data.append('db_password', document.getElementById('db_password').value);
+    }
+
     const res = await fetch(`${API_BASE}/set_credentials`, { method:'POST', body:data });
-    if(!res.ok) return alert("Failed to connect spreadsheet");
+    if(!res.ok) {
+        const error = await res.json();
+        return alert("Failed to connect: " + (error.error || "Unknown error"));
+    }
 
     const json = await res.json();
     const container = document.getElementById('sheetSelection');
     container.innerHTML = "";
 
-    json.sheets.forEach(name => {
+    const itemType = json.type;
+    const itemName = itemType === 'sheets' ? 'sheet_names' : 'table_names';
+
+    json.items.forEach(name => {
         const div = document.createElement('div');
-        div.innerHTML = `<input type="checkbox" name="sheet_names" value="${name}"> ${name}`;
+        div.innerHTML = `<input type="checkbox" name="${itemName}" value="${name}"> ${name}`;
         container.appendChild(div);
     });
 
     document.getElementById('loadChatBtn').style.display = 'inline-block';
 }
 
-// Load selected sheets to chat
+// Load selected items to chat
 function loadChat() {
-    const selectedSheets = Array.from(document.querySelectorAll('input[name="sheet_names"]:checked'))
+    const dataSource = document.getElementById('data_source').value;
+    const itemName = dataSource === 'google_sheets' ? 'sheet_names' : 'table_names';
+    const selectedItems = Array.from(document.querySelectorAll(`input[name="${itemName}"]:checked`))
                                 .map(el=>el.value);
-    if(selectedSheets.length === 0) return alert("Select at least one sheet");
+    if(selectedItems.length === 0) {
+        const itemType = dataSource === 'google_sheets' ? 'sheet' : 'table';
+        return alert(`Select at least one ${itemType}`);
+    }
 
     const data = new URLSearchParams();
-    selectedSheets.forEach(s => data.append('sheet_names', s));
+    selectedItems.forEach(s => data.append('item_names', s));
 
-    fetch(`${API_BASE}/set_sheet`, { method:'POST', body:data })
+    fetch(`${API_BASE}/set_items`, { method:'POST', body:data })
         .then(res => res.json())
         .then(json => {
             document.getElementById('chatInterface').style.display='block';
-            alert("Sheets loaded! You can now chat.");
+            const itemType = dataSource === 'google_sheets' ? 'Sheets' : 'Tables';
+            alert(`${itemType} loaded! You can now chat.`);
         });
 }
 
@@ -272,20 +347,48 @@ async function sendMessage() {
 
 // Save chatbot
 async function saveChatbot() {
-    const selectedSheets = Array.from(document.querySelectorAll('input[name="sheet_names"]:checked')).map(el=>el.value);
+    // Validation: Ensure chatbot_id is generated
+    if (!document.getElementById('chatbot_id').value) {
+        alert("Please generate a Chatbot ID first.");
+        return;
+    }
+
+    const dataSource = document.getElementById('data_source').value;
+    const itemName = dataSource === 'google_sheets' ? 'sheet_names' : 'table_names';
+    const selectedItems = Array.from(document.querySelectorAll(`input[name="${itemName}"]:checked`)).map(el=>el.value);
     const data = new URLSearchParams({
         username: "<?= $_SESSION['username'] ?>",
         chatbot_name: document.getElementById('chatbot_name').value,
         chatbot_id: document.getElementById('chatbot_id').value,
         gemini_api_key: document.getElementById('gemini_api_key').value,
         gemini_model: document.getElementById('gemini_model').value,
-        sheet_id: document.getElementById('sheet_id').value,
-        service_account_json: document.getElementById('service_account_json').value
+        data_source: dataSource
     });
-    selectedSheets.forEach(s => data.append('selected_sheets', s));
+
+    if (dataSource === 'google_sheets') {
+        data.append('sheet_id', document.getElementById('sheet_id').value);
+        data.append('service_account_json', document.getElementById('service_account_json').value);
+    } else {
+        data.append('db_host', document.getElementById('db_host').value);
+        data.append('db_port', document.getElementById('db_port').value);
+        data.append('db_name', document.getElementById('db_name').value);
+        data.append('db_username', document.getElementById('db_username').value);
+        data.append('db_password', document.getElementById('db_password').value);
+    }
+
+    selectedItems.forEach(s => data.append('selected_items', s));
+
+    // Logging: Print data being sent
+    console.log('Saving chatbot with data:', Object.fromEntries(data));
 
     const res = await fetch(`${API_BASE}/save_chatbot`, { method:'POST', body:data });
-    if(res.ok) alert("Chatbot saved!");
+    if(res.ok) {
+        alert("Chatbot saved!");
+    } else {
+        // Error handling: Alert user if save fails
+        const error = await res.json();
+        alert("Failed to save chatbot: " + (error.message || "Unknown error"));
+    }
 }
 
 // Load saved chatbots
@@ -322,13 +425,25 @@ function fillForm(cb){
     document.getElementById('chatbot_id').value = cb.id;
     document.getElementById('gemini_api_key').value = cb.gemini_api_key;
     document.getElementById('gemini_model').value = cb.gemini_model;
-    document.getElementById('sheet_id').value = cb.sheet_id;
-    document.getElementById('service_account_json').value = cb.service_account_json;
+    document.getElementById('data_source').value = cb.data_source || 'google_sheets';
+    onDataSourceChange(); // Update fields visibility
 
-    const selectedSheets = JSON.parse(cb.selected_sheets || "[]");
+    if (cb.data_source === 'google_sheets') {
+        document.getElementById('sheet_id').value = cb.sheet_id;
+        document.getElementById('service_account_json').value = cb.service_account_json;
+    } else {
+        document.getElementById('db_host').value = cb.db_host;
+        document.getElementById('db_port').value = cb.db_port;
+        document.getElementById('db_name').value = cb.db_name;
+        document.getElementById('db_username').value = cb.db_username;
+        document.getElementById('db_password').value = cb.db_password;
+    }
+
+    const selectedItems = JSON.parse(cb.selected_items || "[]");
+    const itemName = cb.data_source === 'google_sheets' ? 'sheet_names' : 'table_names';
     const container = document.getElementById('sheetSelection');
-    container.querySelectorAll('input[name="sheet_names"]').forEach(input=>{
-        input.checked = selectedSheets.includes(input.value);
+    container.querySelectorAll(`input[name="${itemName}"]`).forEach(input=>{
+        input.checked = selectedItems.includes(input.value);
     });
 }
 <?php endif; ?>
