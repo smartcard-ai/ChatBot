@@ -23,10 +23,15 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS chatbots (
             id TEXT PRIMARY KEY,
             username TEXT,
-            password TEXT,
             chatbot_name TEXT,
             gemini_api_key TEXT,
             gemini_model TEXT,
@@ -51,15 +56,12 @@ def signup():
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM chatbots WHERE username=?", (username,))
+    cursor.execute("SELECT * FROM users WHERE username=?", (username,))
     if cursor.fetchone():
         conn.close()
         return jsonify({"success": False, "message": "User already exists"}), 400
 
-    cursor.execute("""
-        INSERT INTO chatbots (id, username, password, chatbot_name, gemini_api_key, gemini_model, sheet_id, selected_sheets, service_account_json)
-        VALUES (?, ?, ?, '', '', '', '', '', '')
-    """, (f"user-{username}", username, password))
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -72,7 +74,7 @@ def login():
     password = data.get('password')
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM chatbots WHERE username=? AND password=?", (username, password))
+    cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
     if cursor.fetchone():
         conn.close()
         return jsonify({"success": True})
@@ -134,19 +136,17 @@ def save_chatbot():
     username = request.form['username']
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT password FROM chatbots WHERE username=?", (username,))
+    cursor.execute("SELECT * FROM users WHERE username=?", (username,))
     row = cursor.fetchone()
     if not row:
         conn.close()
         return jsonify({"success": False, "message": "User not found"}), 400
-    password = row[0]
     cursor.execute("""
-        INSERT OR REPLACE INTO chatbots (id, username, password, chatbot_name, gemini_api_key, gemini_model, sheet_id, selected_sheets, service_account_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO chatbots (id, username, chatbot_name, gemini_api_key, gemini_model, sheet_id, selected_sheets, service_account_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         request.form['chatbot_id'],
         username,
-        password,
         request.form['chatbot_name'],
         request.form['gemini_api_key'],
         request.form['gemini_model'],
@@ -161,10 +161,13 @@ def save_chatbot():
 # --- List saved chatbots ---
 @app.route('/list_chatbots', methods=['GET'])
 def list_chatbots():
+    username = request.args.get('username')
+    if not username:
+        return jsonify({"error": "Username required"}), 400
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM chatbots")
+    cursor.execute("SELECT * FROM chatbots WHERE username=?", (username,))
     rows = cursor.fetchall()
     conn.close()
     return jsonify([dict(row) for row in rows])

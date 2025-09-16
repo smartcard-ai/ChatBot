@@ -26,7 +26,19 @@ if (isset($_GET['logout'])) {
         #chat { border:1px solid #ccc; height:300px; overflow-y:scroll; padding:10px; margin-top:20px; }
         .user { color:blue; }
         .bot { color:green; }
-        #savedList { border:1px solid #ccc; padding:10px; max-height:200px; overflow-y:auto; margin-bottom:10px; }
+        #savedList { 
+            border:1px solid #ccc; 
+            padding:10px; 
+            max-height:200px; 
+            overflow-y:auto; 
+            margin-bottom:10px; 
+            position: absolute; 
+            background: white; 
+            width: 250px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: none;
+        }
         .savedItem { cursor:pointer; padding:5px; border-bottom:1px solid #eee; }
         .savedItem:hover { background-color:#f0f0f0; }
         #sheetSelection { margin-top:10px; }
@@ -279,16 +291,28 @@ async function saveChatbot() {
 // Load saved chatbots
 async function loadSavedChatbots() {
     const listDiv = document.getElementById('savedList');
-    const res = await fetch(`${API_BASE}/list_chatbots`);
+    const username = "<?= $_SESSION['username'] ?>";
+    const res = await fetch(`${API_BASE}/list_chatbots?username=${encodeURIComponent(username)}`);
     const data = await res.json();
     listDiv.innerHTML = '';
     data.forEach(cb=>{
         const div = document.createElement('div');
         div.className = 'savedItem';
         div.textContent = cb.chatbot_name + ' (' + cb.id + ')';
-        div.onclick = ()=>fillForm(cb);
+        div.onclick = ()=>{
+            fillForm(cb);
+            listDiv.style.display = 'none'; // Auto close dropdown on selection
+        };
         listDiv.appendChild(div);
     });
+    // Position the dropdown below the button
+    const button = document.querySelector('button.btn-info');
+    const rect = button.getBoundingClientRect();
+    listDiv.style.position = 'absolute';
+    listDiv.style.top = (rect.bottom + window.scrollY) + 'px';
+    listDiv.style.left = (rect.left + window.scrollX) + 'px';
+    listDiv.style.width = rect.width + 'px';
+
     listDiv.style.display = 'block';
 }
 
