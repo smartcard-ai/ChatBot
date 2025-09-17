@@ -9,6 +9,9 @@ import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS, cross_origin
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:8000"], supports_credentials=True)
 
@@ -105,15 +108,39 @@ def set_credentials():
 
     if data_source == 'google_sheets':
         try:
-            service_json = json.loads(CONFIG['service_account_json'])
+            service_json_str = CONFIG['service_account_json']
+            logging.info(f"Service account JSON string length: {len(service_json_str)}")
+            service_json = json.loads(service_json_str)
+            logging.info("Service account JSON parsed successfully.")
+
+            # Validate required keys for service account
+            required_keys = ['type', 'project_id', 'private_key_id', 'private_key', 'client_email', 'client_id', 'auth_uri', 'token_uri', 'auth_provider_x509_cert_url', 'client_x509_cert_url']
+            missing_keys = [key for key in required_keys if key not in service_json]
+            if missing_keys:
+                logging.error(f"Missing keys in service account JSON: {missing_keys}")
+                return jsonify({'error': f'Invalid Service Account JSON: missing keys {missing_keys}'}), 400
+
+            if service_json.get('type') != 'service_account':
+                logging.error("Service account JSON type is not 'service_account'")
+                return jsonify({'error': 'Invalid Service Account JSON: type must be service_account'}), 400
+
+        except json.JSONDecodeError as e:
+            logging.error(f"JSON decode error: {str(e)}")
+            return jsonify({'error': 'Invalid Service Account JSON: not valid JSON'}), 400
         except Exception as e:
+            logging.error(f"Failed to load service account JSON: {str(e)}")
             return jsonify({'error': 'Invalid Service Account JSON'}), 400
 
-        creds = Credentials.from_service_account_info(service_json, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
-        gc = gspread.authorize(creds)
-        spreadsheet = gc.open_by_key(CONFIG['sheet_id'])
-        items = [ws.title for ws in spreadsheet.worksheets()]
-        return jsonify({'type': 'sheets', 'items': items})
+        try:
+            creds = Credentials.from_service_account_info(service_json, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
+            logging.info(f"Credentials created successfully.")
+            gc = gspread.authorize(creds)
+            spreadsheet = gc.open_by_key(CONFIG['sheet_id'])
+            items = [ws.title for ws in spreadsheet.worksheets()]
+            return jsonify({'type': 'sheets', 'items': items})
+        except Exception as e:
+            logging.error(f"Failed to authorize or open spreadsheet: {str(e)}")
+            return jsonify({'error': 'Failed to authorize or open spreadsheet'}), 400
 
     elif data_source == 'mysql':
         try:

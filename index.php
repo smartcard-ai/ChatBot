@@ -391,7 +391,6 @@ async function saveChatbot() {
     }
 }
 
-// Load saved chatbots
 async function loadSavedChatbots() {
     const listDiv = document.getElementById('savedList');
     const username = "<?= $_SESSION['username'] ?>";
@@ -405,6 +404,7 @@ async function loadSavedChatbots() {
         div.onclick = ()=>{
             fillForm(cb);
             listDiv.style.display = 'none'; // Auto close dropdown on selection
+            document.removeEventListener('click', outsideClickListener);
         };
         listDiv.appendChild(div);
     });
@@ -417,6 +417,18 @@ async function loadSavedChatbots() {
     listDiv.style.width = rect.width + 'px';
 
     listDiv.style.display = 'block';
+
+    // Add click outside listener to close dropdown
+    setTimeout(() => {
+        document.addEventListener('click', outsideClickListener);
+    }, 0);
+
+    function outsideClickListener(event) {
+        if (!listDiv.contains(event.target) && event.target !== button) {
+            listDiv.style.display = 'none';
+            document.removeEventListener('click', outsideClickListener);
+        }
+    }
 }
 
 // Fill form with saved chatbot
