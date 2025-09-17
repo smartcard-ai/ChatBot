@@ -36,9 +36,9 @@ def init_db():
             password TEXT
         )
     """)
-    cursor.execute("DROP TABLE IF EXISTS chatbots")
+    
     cursor.execute("""
-        CREATE TABLE chatbots (
+        CREATE TABLE IF NOT EXISTS chatbots (
             id TEXT PRIMARY KEY,
             username TEXT,
             chatbot_name TEXT,
