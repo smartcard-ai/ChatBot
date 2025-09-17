@@ -138,6 +138,7 @@ if (isset($_GET['logout'])) {
             <option value="google_sheets" selected>Google Sheets</option>
             <option value="mysql">MySQL</option>
             <option value="postgresql">PostgreSQL</option>
+            <option value="neo4j">Neo4j</option>
         </select>
     </div>
 
@@ -173,6 +174,25 @@ if (isset($_GET['logout'])) {
         <div class="mb-3">
             <label>Database Password</label>
             <input type="password" class="form-control" id="db_password">
+        </div>
+    </div>
+
+    <div id="neo4jFields" style="display:none;">
+        <div class="mb-3">
+            <label>Neo4j URI</label>
+            <input type="text" class="form-control" id="neo4j_uri">
+        </div>
+        <div class="mb-3">
+            <label>Database Name</label>
+            <input type="text" class="form-control" id="db_name">
+        </div>
+        <div class="mb-3">
+            <label>Neo4j Username</label>
+            <input type="text" class="form-control" id="neo4j_username">
+        </div>
+        <div class="mb-3">
+            <label>Neo4j Password</label>
+            <input type="password" class="form-control" id="neo4j_password">
         </div>
     </div>
 
@@ -245,12 +265,19 @@ function onDataSourceChange() {
     const dataSource = document.getElementById('data_source').value;
     const googleFields = document.getElementById('googleSheetsFields');
     const dbFields = document.getElementById('dbFields');
+    const neo4jFields = document.getElementById('neo4jFields');
     if (dataSource === 'google_sheets') {
         googleFields.style.display = 'block';
         dbFields.style.display = 'none';
+        neo4jFields.style.display = 'none';
+    } else if (dataSource === 'neo4j') {
+        googleFields.style.display = 'none';
+        dbFields.style.display = 'none';
+        neo4jFields.style.display = 'block';
     } else {
         googleFields.style.display = 'none';
         dbFields.style.display = 'block';
+        neo4jFields.style.display = 'none';
         if (dataSource === 'mysql') {
             document.getElementById('db_port').value = '3306';
         } else if (dataSource === 'postgresql') {
@@ -274,6 +301,11 @@ async function connectSpreadsheet() {
     if (dataSource === 'google_sheets') {
         data.append('sheet_id', document.getElementById('sheet_id').value);
         data.append('service_account_json', document.getElementById('service_account_json').value);
+    } else if (dataSource === 'neo4j') {
+        data.append('neo4j_uri', document.getElementById('neo4j_uri').value);
+        data.append('db_name', document.getElementById('db_name').value);
+        data.append('neo4j_username', document.getElementById('neo4j_username').value);
+        data.append('neo4j_password', document.getElementById('neo4j_password').value);
     } else {
         data.append('db_host', document.getElementById('db_host').value);
         data.append('db_port', document.getElementById('db_port').value);
@@ -368,6 +400,11 @@ async function saveChatbot() {
     if (dataSource === 'google_sheets') {
         data.append('sheet_id', document.getElementById('sheet_id').value);
         data.append('service_account_json', document.getElementById('service_account_json').value);
+    } else if (dataSource === 'neo4j') {
+        data.append('neo4j_uri', document.getElementById('neo4j_uri').value);
+        data.append('db_name', document.getElementById('db_name').value);
+        data.append('neo4j_username', document.getElementById('neo4j_username').value);
+        data.append('neo4j_password', document.getElementById('neo4j_password').value);
     } else {
         data.append('db_host', document.getElementById('db_host').value);
         data.append('db_port', document.getElementById('db_port').value);

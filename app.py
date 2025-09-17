@@ -5,6 +5,7 @@ from google import genai
 import sqlite3
 import pymysql
 import psycopg2
+from neo4j import GraphDatabase
 import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS, cross_origin
@@ -176,6 +177,25 @@ def set_credentials():
         except Exception as e:
             return jsonify({'error': f'PostgreSQL connection failed: {str(e)}'}), 400
 
+    elif data_source == 'neo4j':
+        try:
+            uri = CONFIG['neo4j_uri']
+            username = CONFIG['neo4j_username']
+            password = CONFIG['neo4j_password']
+            database = CONFIG['db_name']
+            driver = GraphDatabase.driver(uri, auth=(username, password))
+            db_conn = driver
+            with driver.session(database=database) as session:
+                result = session.run("MATCH (n) RETURN DISTINCT labels(n) AS labels")
+                labels_set = set()
+                for record in result:
+                    labels_list = record["labels"]
+                    labels_set.update(labels_list)
+                items = list(labels_set)
+            return jsonify({'type': 'labels', 'items': items})
+        except Exception as e:
+            return jsonify({'error': f'Neo4j connection failed: {str(e)}'}), 400
+
     else:
         return jsonify({'error': 'Invalid data source'}), 400
 
@@ -203,14 +223,23 @@ def chat():
 
     if data_source == 'google_sheets' and not worksheets:
         return jsonify({'response': 'Select at least one sheet first.'})
-    elif data_source in ['mysql', 'postgresql'] and not selected_tables:
-        return jsonify({'response': 'Select at least one table first.'})
+    elif data_source in ['mysql', 'postgresql', 'neo4j'] and not selected_tables:
+        return jsonify({'response': 'Select at least one item first.'})
 
     user_input = request.json.get('message')
 
     if data_source == 'google_sheets':
         all_data = {ws.title: ws.get_all_records() for ws in worksheets}
         data_desc = "Spreadsheet data"
+    elif data_source == 'neo4j':
+        all_data = {}
+        driver = db_conn
+        with driver.session(database=CONFIG['db_name']) as session:
+            for label in selected_tables:
+                result = session.run(f"MATCH (n:{label}) RETURN n")
+                records = [dict(record['n']) for record in result]
+                all_data[label] = records
+        data_desc = "Graph data"
     else:
         all_data = {}
         for table in selected_tables:
@@ -261,6 +290,14 @@ def save_chatbot():
             selected_sheets = json.dumps(selected_items)
             selected_tables = None
             db_host = db_port = db_name = db_username = db_password = None
+        elif data_source == 'neo4j':
+            selected_sheets = None
+            selected_tables = json.dumps(selected_items)
+            db_host = request.form.get('neo4j_uri')
+            db_port = None
+            db_name = request.form.get('db_name') or request.form.get('db_name')
+            db_username = request.form.get('neo4j_username') or request.form.get('db_username')
+            db_password = request.form.get('neo4j_password') or request.form.get('db_password')
         else:
             selected_sheets = None
             selected_tables = json.dumps(selected_items)
