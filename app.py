@@ -6,6 +6,7 @@ import sqlite3
 import pymysql
 import psycopg2
 from neo4j import GraphDatabase
+from pymongo import MongoClient
 import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS, cross_origin
@@ -54,9 +55,26 @@ def init_db():
             db_name TEXT,
             db_username TEXT,
             db_password TEXT,
-            selected_tables TEXT
+            selected_tables TEXT,
+            mongo_uri TEXT,
+            mongo_db_name TEXT,
+            selected_collections TEXT
         )
     """)
+    # Add missing columns if they don't exist
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN mongo_uri TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN mongo_db_name TEXT;")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN selected_collections TEXT;")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -182,7 +200,10 @@ def set_credentials():
             uri = CONFIG['neo4j_uri']
             username = CONFIG['neo4j_username']
             password = CONFIG['neo4j_password']
-            database = CONFIG['db_name']
+            database = CONFIG['neo4j_db_name']
+            CONFIG['db_name'] = database  # Set for consistency in other parts
+            logging.info(f"Neo4j connection: uri={uri}, username={username}, database={database}")
+            logging.info(f"Received neo4j_db_name in set_credentials: {database}")
             driver = GraphDatabase.driver(uri, auth=(username, password))
             db_conn = driver
             with driver.session(database=database) as session:
@@ -194,7 +215,19 @@ def set_credentials():
                 items = list(labels_set)
             return jsonify({'type': 'labels', 'items': items})
         except Exception as e:
+            logging.error(f"Neo4j connection failed: {str(e)}")
             return jsonify({'error': f'Neo4j connection failed: {str(e)}'}), 400
+
+    elif data_source == 'mongodb':
+        try:
+            # Note: Disabling TLS certificate verification for development. For production, use proper CA certificates.
+            client = MongoClient(CONFIG['mongo_uri'], tls=True, tlsAllowInvalidCertificates=True)
+            db = client[CONFIG['mongo_db_name']]
+            items = db.list_collection_names()
+            db_conn = db
+            return jsonify({'type': 'collections', 'items': items})
+        except Exception as e:
+            return jsonify({'error': f'MongoDB connection failed: {str(e)}'}), 400
 
     else:
         return jsonify({'error': 'Invalid data source'}), 400
@@ -223,7 +256,7 @@ def chat():
 
     if data_source == 'google_sheets' and not worksheets:
         return jsonify({'response': 'Select at least one sheet first.'})
-    elif data_source in ['mysql', 'postgresql', 'neo4j'] and not selected_tables:
+    elif data_source in ['mysql', 'postgresql', 'neo4j', 'mongodb'] and not selected_tables:
         return jsonify({'response': 'Select at least one item first.'})
 
     user_input = request.json.get('message')
@@ -240,6 +273,21 @@ def chat():
                 records = [dict(record['n']) for record in result]
                 all_data[label] = records
         data_desc = "Graph data"
+    elif data_source == 'mongodb':
+        all_data = {}
+        for collection in selected_tables:
+            coll = db_conn[collection]
+            documents = list(coll.find())
+            # Convert ObjectId and datetime to string for JSON serialization
+            for doc in documents:
+                for key, value in doc.items():
+                    if hasattr(value, '__class__'):
+                        if value.__class__.__name__ == 'ObjectId':
+                            doc[key] = str(value)
+                        elif value.__class__.__name__ == 'datetime':
+                            doc[key] = value.isoformat()
+            all_data[collection] = documents
+        data_desc = "MongoDB data"
     else:
         all_data = {}
         for table in selected_tables:
@@ -252,6 +300,9 @@ def chat():
         data_desc = "Database data"
 
     prompt = f"You are an assistant. {data_desc}: {json.dumps(all_data, indent=2)}\nUser: {user_input}\nAnswer:"
+
+    if gemini_client is None:
+        return jsonify({'response': 'Gemini client not initialized. Please set credentials first.'})
 
     response = gemini_client.models.generate_content(
         model=CONFIG['gemini_model'],
@@ -289,28 +340,42 @@ def save_chatbot():
         if data_source == 'google_sheets':
             selected_sheets = json.dumps(selected_items)
             selected_tables = None
+            selected_collections = None
             db_host = db_port = db_name = db_username = db_password = None
+            mongo_uri = mongo_db_name = mongo_username = mongo_password = None
         elif data_source == 'neo4j':
             selected_sheets = None
             selected_tables = json.dumps(selected_items)
+            selected_collections = None
             db_host = request.form.get('neo4j_uri')
             db_port = None
-            db_name = request.form.get('db_name') or request.form.get('db_name')
-            db_username = request.form.get('neo4j_username') or request.form.get('db_username')
-            db_password = request.form.get('neo4j_password') or request.form.get('db_password')
+            db_name = request.form.get('neo4j_db_name')
+            logging.info(f"Saving Neo4j chatbot: db_name={db_name}")
+            db_username = request.form.get('neo4j_username')
+            db_password = request.form.get('neo4j_password')
+            mongo_uri = mongo_db_name = mongo_username = mongo_password = None
+        elif data_source == 'mongodb':
+            selected_sheets = None
+            selected_tables = None
+            selected_collections = json.dumps(selected_items)
+            db_host = db_port = db_name = db_username = db_password = None
+            mongo_uri = request.form.get('mongo_uri')
+            mongo_db_name = request.form.get('mongo_db_name')
         else:
             selected_sheets = None
             selected_tables = json.dumps(selected_items)
+            selected_collections = None
             db_host = request.form.get('db_host')
             db_port_str = request.form.get('db_port')
             db_port = int(db_port_str) if db_port_str else None
             db_name = request.form.get('db_name')
             db_username = request.form.get('db_username')
             db_password = request.form.get('db_password')
+            mongo_uri = mongo_db_name = None
 
         cursor.execute("""
-            INSERT OR REPLACE INTO chatbots (id, username, chatbot_name, gemini_api_key, gemini_model, data_source, sheet_id, selected_sheets, service_account_json, db_host, db_port, db_name, db_username, db_password, selected_tables)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO chatbots (id, username, chatbot_name, gemini_api_key, gemini_model, data_source, sheet_id, selected_sheets, service_account_json, db_host, db_port, db_name, db_username, db_password, selected_tables, mongo_uri, mongo_db_name, selected_collections)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             request.form['chatbot_id'],
             username,
@@ -326,7 +391,10 @@ def save_chatbot():
             db_name,
             db_username,
             db_password,
-            selected_tables
+            selected_tables,
+            mongo_uri,
+            mongo_db_name,
+            selected_collections
         ))
         conn.commit()
         conn.close()

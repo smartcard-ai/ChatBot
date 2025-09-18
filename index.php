@@ -65,11 +65,11 @@ if (isset($_GET['logout'])) {
                 <div class="tab-pane fade show active" id="login">
                     <form id="loginForm" autocomplete="off">
                         <div class="mb-3">
-                            <label>Username</label>
+                            <label for="loginUsername">Username</label>
                             <input type="text" class="form-control" id="loginUsername" required>
                         </div>
                         <div class="mb-3">
-                            <label>Password</label>
+                            <label for="loginPassword">Password</label>
                             <input type="password" class="form-control" id="loginPassword" required>
                         </div>
                         <button class="btn btn-primary w-100">Login</button>
@@ -81,11 +81,11 @@ if (isset($_GET['logout'])) {
                 <div class="tab-pane fade" id="signup">
                     <form id="signupForm" autocomplete="off">
                         <div class="mb-3">
-                            <label>Username</label>
+                            <label for="signupUsername">Username</label>
                             <input type="text" class="form-control" id="signupUsername" required>
                         </div>
                         <div class="mb-3">
-                            <label>Password</label>
+                            <label for="signupPassword">Password</label>
                             <input type="password" class="form-control" id="signupPassword" required>
                         </div>
                         <button class="btn btn-success w-100">Sign Up</button>
@@ -106,15 +106,15 @@ if (isset($_GET['logout'])) {
     <button class="btn btn-info mb-3" onclick="loadSavedChatbots()">Preview Saved Chatbots</button>
     <div id="savedList" class="mb-3" style="display:none;"></div>
 
-    <!-- Chatbot Form -->
-    <form id="chatbotForm">
+    <!-- Chatbot Configuration Form -->
+    <form id="configForm">
         <div class="row">
             <div class="col-md-6 mb-3">
-                <label>Chatbot Name</label>
+                <label for="chatbot_name">Chatbot Name</label>
                 <input type="text" class="form-control" id="chatbot_name" required>
             </div>
             <div class="col-md-6 mb-3">
-                <label>Chatbot ID</label>
+                <label for="chatbot_id">Chatbot ID</label>
                 <div class="input-group">
                     <input type="text" class="form-control" id="chatbot_id" readonly>
                     <button type="button" class="btn btn-secondary" onclick="generateID()">Generate ID</button>
@@ -122,84 +122,98 @@ if (isset($_GET['logout'])) {
             </div>
         </div>
 
-    <div class="mb-3">
-        <label>Gemini API Key</label>
-        <input type="text" class="form-control" id="gemini_api_key" required>
-    </div>
-
-    <div class="mb-3">
-        <label>Gemini Model</label>
-        <input type="text" class="form-control" id="gemini_model" value="gemini-2.0-flash" required>
-    </div>
-
-    <div class="mb-3">
-        <label>Data Source</label>
-        <select class="form-select" id="data_source" onchange="onDataSourceChange()">
-            <option value="google_sheets" selected>Google Sheets</option>
-            <option value="mysql">MySQL</option>
-            <option value="postgresql">PostgreSQL</option>
-            <option value="neo4j">Neo4j</option>
-        </select>
-    </div>
-
-    <div id="googleSheetsFields">
         <div class="mb-3">
-            <label>Google Spreadsheet ID</label>
-            <input type="text" class="form-control" id="sheet_id">
+            <label for="gemini_api_key">Gemini API Key</label>
+            <input type="text" class="form-control" id="gemini_api_key" required>
         </div>
 
         <div class="mb-3">
-            <label>Service Account JSON</label>
-            <textarea class="form-control" id="service_account_json" rows="5"></textarea>
+            <label for="gemini_model">Gemini Model</label>
+            <input type="text" class="form-control" id="gemini_model" value="gemini-2.0-flash" required>
         </div>
-    </div>
 
-    <div id="dbFields" style="display:none;">
         <div class="mb-3">
-            <label>Database Host</label>
-            <input type="text" class="form-control" id="db_host">
+            <label for="data_source">Data Source</label>
+            <select class="form-select" id="data_source" onchange="onDataSourceChange()">
+                <option value="google_sheets" selected>Google Sheets</option>
+                <option value="mysql">MySQL</option>
+                <option value="postgresql">PostgreSQL</option>
+                <option value="neo4j">Neo4j</option>
+                <option value="mongodb">MongoDB</option>
+            </select>
         </div>
-        <div class="mb-3">
-            <label>Database Port</label>
-            <input type="number" class="form-control" id="db_port" value="3306">
-        </div>
-        <div class="mb-3">
-            <label>Database Name</label>
-            <input type="text" class="form-control" id="db_name">
-        </div>
-        <div class="mb-3">
-            <label>Database Username</label>
-            <input type="text" class="form-control" id="db_username">
-        </div>
-        <div class="mb-3">
-            <label>Database Password</label>
-            <input type="password" class="form-control" id="db_password">
-        </div>
-    </div>
 
-    <div id="neo4jFields" style="display:none;">
-        <div class="mb-3">
-            <label>Neo4j URI</label>
-            <input type="text" class="form-control" id="neo4j_uri">
+        <div id="googleSheetsFields">
+            <div class="mb-3">
+                <label for="sheet_id">Google Spreadsheet ID</label>
+                <input type="text" class="form-control" id="sheet_id">
+            </div>
+
+            <div class="mb-3">
+                <label for="service_account_json">Service Account JSON</label>
+                <textarea class="form-control" id="service_account_json" rows="5"></textarea>
+            </div>
         </div>
-        <div class="mb-3">
-            <label>Database Name</label>
-            <input type="text" class="form-control" id="db_name">
+
+        <div id="dbFields" style="display:none;">
+            <div class="mb-3">
+                <label for="db_host">Database Host</label>
+                <input type="text" class="form-control" id="db_host">
+            </div>
+            <div class="mb-3">
+                <label for="db_port">Database Port</label>
+                <input type="number" class="form-control" id="db_port" value="3306">
+            </div>
+            <div class="mb-3">
+                <label for="db_name">Database Name</label>
+                <input type="text" class="form-control" id="db_name">
+            </div>
+            <div class="mb-3">
+                <label for="db_username">Database Username</label>
+                <input type="text" class="form-control" id="db_username">
+            </div>
+            <div class="mb-3">
+                <label for="db_password">Database Password</label>
+                <input type="password" class="form-control" id="db_password">
+            </div>
         </div>
-        <div class="mb-3">
-            <label>Neo4j Username</label>
-            <input type="text" class="form-control" id="neo4j_username">
+
+        <div id="neo4jFields" style="display:none;">
+            <div class="mb-3">
+                <label for="neo4j_uri">Neo4j URI</label>
+                <input type="text" class="form-control" id="neo4j_uri">
+            </div>
+            <div class="mb-3">
+                <label for="neo4j_db_name">Database Name</label>
+                <input type="text" class="form-control" id="neo4j_db_name">
+            </div>
+            <div class="mb-3">
+                <label for="neo4j_username">Neo4j Username</label>
+                <input type="text" class="form-control" id="neo4j_username">
+            </div>
+            <div class="mb-3">
+                <label for="neo4j_password">Neo4j Password</label>
+                <input type="password" class="form-control" id="neo4j_password">
+            </div>
         </div>
-        <div class="mb-3">
-            <label>Neo4j Password</label>
-            <input type="password" class="form-control" id="neo4j_password">
+
+        <div id="mongodbFields" style="display:none;">
+            <div class="mb-3">
+                <label for="mongo_uri">MongoDB URI</label>
+                <input type="text" class="form-control" id="mongo_uri" placeholder="mongodb://localhost:27017">
+            </div>
+            <div class="mb-3">
+                <label for="mongo_db_name">Database Name</label>
+                <input type="text" class="form-control" id="mongo_db_name">
+            </div>
         </div>
-    </div>
 
         <button type="button" class="btn btn-primary mb-3" onclick="connectSpreadsheet()">Connect</button>
+    </form>
 
+    <!-- Sheet/Table Selection Form -->
+    <form id="selectionForm">
         <div id="sheetSelection" class="mt-3"></div>
-
         <button type="button" class="btn btn-success mt-2" id="loadChatBtn" style="display:none;" onclick="loadChat()">Load to Chat</button>
     </form>
 
@@ -266,18 +280,27 @@ function onDataSourceChange() {
     const googleFields = document.getElementById('googleSheetsFields');
     const dbFields = document.getElementById('dbFields');
     const neo4jFields = document.getElementById('neo4jFields');
+    const mongodbFields = document.getElementById('mongodbFields');
     if (dataSource === 'google_sheets') {
         googleFields.style.display = 'block';
         dbFields.style.display = 'none';
         neo4jFields.style.display = 'none';
+        mongodbFields.style.display = 'none';
     } else if (dataSource === 'neo4j') {
         googleFields.style.display = 'none';
         dbFields.style.display = 'none';
         neo4jFields.style.display = 'block';
+        mongodbFields.style.display = 'none';
+    } else if (dataSource === 'mongodb') {
+        googleFields.style.display = 'none';
+        dbFields.style.display = 'none';
+        neo4jFields.style.display = 'none';
+        mongodbFields.style.display = 'block';
     } else {
         googleFields.style.display = 'none';
         dbFields.style.display = 'block';
         neo4jFields.style.display = 'none';
+        mongodbFields.style.display = 'none';
         if (dataSource === 'mysql') {
             document.getElementById('db_port').value = '3306';
         } else if (dataSource === 'postgresql') {
@@ -303,9 +326,12 @@ async function connectSpreadsheet() {
         data.append('service_account_json', document.getElementById('service_account_json').value);
     } else if (dataSource === 'neo4j') {
         data.append('neo4j_uri', document.getElementById('neo4j_uri').value);
-        data.append('db_name', document.getElementById('db_name').value);
+        data.append('neo4j_db_name', document.getElementById('neo4j_db_name').value);
         data.append('neo4j_username', document.getElementById('neo4j_username').value);
         data.append('neo4j_password', document.getElementById('neo4j_password').value);
+    } else if (dataSource === 'mongodb') {
+        data.append('mongo_uri', document.getElementById('mongo_uri').value);
+        data.append('mongo_db_name', document.getElementById('mongo_db_name').value);
     } else {
         data.append('db_host', document.getElementById('db_host').value);
         data.append('db_port', document.getElementById('db_port').value);
@@ -402,9 +428,12 @@ async function saveChatbot() {
         data.append('service_account_json', document.getElementById('service_account_json').value);
     } else if (dataSource === 'neo4j') {
         data.append('neo4j_uri', document.getElementById('neo4j_uri').value);
-        data.append('db_name', document.getElementById('db_name').value);
+        data.append('neo4j_db_name', document.getElementById('neo4j_db_name').value);
         data.append('neo4j_username', document.getElementById('neo4j_username').value);
         data.append('neo4j_password', document.getElementById('neo4j_password').value);
+    } else if (dataSource === 'mongodb') {
+        data.append('mongo_uri', document.getElementById('mongo_uri').value);
+        data.append('mongo_db_name', document.getElementById('mongo_db_name').value);
     } else {
         data.append('db_host', document.getElementById('db_host').value);
         data.append('db_port', document.getElementById('db_port').value);
@@ -480,6 +509,14 @@ function fillForm(cb){
     if (cb.data_source === 'google_sheets') {
         document.getElementById('sheet_id').value = cb.sheet_id;
         document.getElementById('service_account_json').value = cb.service_account_json;
+    } else if (cb.data_source === 'neo4j') {
+        document.getElementById('neo4j_uri').value = cb.db_host;
+        document.getElementById('neo4j_db_name').value = cb.db_name;
+        document.getElementById('neo4j_username').value = cb.db_username;
+        document.getElementById('neo4j_password').value = cb.db_password;
+    } else if (cb.data_source === 'mongodb') {
+        document.getElementById('mongo_uri').value = cb.mongo_uri;
+        document.getElementById('mongo_db_name').value = cb.mongo_db_name;
     } else {
         document.getElementById('db_host').value = cb.db_host;
         document.getElementById('db_port').value = cb.db_port;
