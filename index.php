@@ -1,6 +1,6 @@
 <?php
 session_start();
-$API_BASE = "http://127.0.0.1:8080";
+$API_BASE = "http://localhost:5001";
 
 // Handle session set
 if(isset($_GET['set_session']) && !empty($_GET['username'])) {
