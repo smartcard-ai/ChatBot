@@ -10,9 +10,14 @@ from pymongo import MongoClient
 import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS, cross_origin
+from databricks import sql
+import certifi
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+
+# Suppress urllib3 SSL warnings
+logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:8000"], supports_credentials=True)
@@ -58,7 +63,13 @@ def init_db():
             selected_tables TEXT,
             mongo_uri TEXT,
             mongo_db_name TEXT,
-            selected_collections TEXT
+            selected_collections TEXT,
+            databricks_host TEXT,
+            databricks_token TEXT,
+            databricks_cluster_id TEXT,
+            databricks_db_name TEXT,
+            supabase_url TEXT,
+            supabase_api_key TEXT
         )
     """)
     # Add missing columns if they don't exist
@@ -73,6 +84,50 @@ def init_db():
 
     try:
         cursor.execute("ALTER TABLE chatbots ADD COLUMN selected_collections TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN databricks_host TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN databricks_token TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN databricks_cluster_id TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN databricks_db_name TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN supabase_url TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN supabase_api_key TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN supabase_host TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN supabase_port TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN supabase_database TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN supabase_user TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE chatbots ADD COLUMN supabase_password TEXT;")
     except sqlite3.OperationalError:
         pass
     conn.commit()
@@ -229,6 +284,48 @@ def set_credentials():
         except Exception as e:
             return jsonify({'error': f'MongoDB connection failed: {str(e)}'}), 400
 
+    elif data_source == 'databricks':
+        try:
+            connection = sql.connect(
+                server_hostname=CONFIG['databricks_host'],
+                http_path=CONFIG['databricks_cluster_id'],
+                access_token=CONFIG['databricks_token'],
+                _is_ssl=True,
+                _tls_cert_file=certifi.where()
+            )
+            db_conn = connection
+            cursor = connection.cursor()
+            cursor.execute(f"USE {CONFIG['databricks_db_name']}")
+            cursor.execute("SHOW TABLES")
+            items = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return jsonify({'type': 'tables', 'items': items})
+        except Exception as e:
+            return jsonify({'error': f'Databricks connection failed: {str(e)}'}), 400
+
+    elif data_source == 'supabase':
+        try:
+            # Build DSN connection string from individual parameters
+            supabase_host = CONFIG.get('supabase_host')
+            supabase_port = CONFIG.get('supabase_port', '5432')
+            supabase_database = CONFIG.get('supabase_database')
+            supabase_user = CONFIG.get('supabase_user')
+            supabase_password = CONFIG.get('supabase_password')
+
+            if not all([supabase_host, supabase_database, supabase_user, supabase_password]):
+                return jsonify({'error': 'Missing Supabase connection parameters'}), 400
+
+            dsn = f"postgresql://{supabase_user}:{supabase_password}@{supabase_host}:{supabase_port}/{supabase_database}"
+
+            db_conn = psycopg2.connect(dsn)
+            cursor = db_conn.cursor()
+            cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")
+            items = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return jsonify({'type': 'tables', 'items': items})
+        except Exception as e:
+            return jsonify({'error': f'Supabase connection failed: {str(e)}'}), 400
+
     else:
         return jsonify({'error': 'Invalid data source'}), 400
 
@@ -256,7 +353,7 @@ def chat():
 
     if data_source == 'google_sheets' and not worksheets:
         return jsonify({'response': 'Select at least one sheet first.'})
-    elif data_source in ['mysql', 'postgresql', 'neo4j', 'mongodb'] and not selected_tables:
+    elif data_source in ['mysql', 'postgresql', 'neo4j', 'mongodb', 'databricks', 'supabase'] and not selected_tables:
         return jsonify({'response': 'Select at least one item first.'})
 
     user_input = request.json.get('message')
@@ -342,7 +439,9 @@ def save_chatbot():
             selected_tables = None
             selected_collections = None
             db_host = db_port = db_name = db_username = db_password = None
-            mongo_uri = mongo_db_name = mongo_username = mongo_password = None
+            mongo_uri = mongo_db_name =  None
+            databricks_host = databricks_token = databricks_cluster_id = databricks_db_name = None
+            supabase_host = supabase_port = supabase_database = supabase_user = supabase_password = supabase_api_key = None
         elif data_source == 'neo4j':
             selected_sheets = None
             selected_tables = json.dumps(selected_items)
@@ -353,7 +452,9 @@ def save_chatbot():
             logging.info(f"Saving Neo4j chatbot: db_name={db_name}")
             db_username = request.form.get('neo4j_username')
             db_password = request.form.get('neo4j_password')
-            mongo_uri = mongo_db_name = mongo_username = mongo_password = None
+            mongo_uri = mongo_db_name = None
+            databricks_host = databricks_token = databricks_cluster_id = databricks_db_name = None
+            supabase_host = supabase_port = supabase_database = supabase_user = supabase_password = supabase_api_key = None
         elif data_source == 'mongodb':
             selected_sheets = None
             selected_tables = None
@@ -361,6 +462,41 @@ def save_chatbot():
             db_host = db_port = db_name = db_username = db_password = None
             mongo_uri = request.form.get('mongo_uri')
             mongo_db_name = request.form.get('mongo_db_name')
+            databricks_host = databricks_token = databricks_cluster_id = databricks_db_name = None
+            supabase_host = supabase_port = supabase_database = supabase_user = supabase_password = supabase_api_key = None
+        elif data_source == 'databricks':
+            selected_sheets = None
+            selected_tables = json.dumps(selected_items)
+            selected_collections = None
+            db_host = None
+            db_port = None
+            db_name = None
+            db_username = None
+            db_password = None
+            mongo_uri = None
+            mongo_db_name = None
+            databricks_host = request.form.get('databricks_host')
+            databricks_token = request.form.get('databricks_token')
+            databricks_cluster_id = request.form.get('databricks_cluster_id')
+            databricks_db_name = request.form.get('databricks_db_name')
+            supabase_host = supabase_port = supabase_database = supabase_user = supabase_password = supabase_api_key = None
+        elif data_source == 'supabase':
+            selected_sheets = None
+            selected_tables = json.dumps(selected_items)
+            selected_collections = None
+            db_host = None
+            db_port = None
+            db_name = None
+            db_username = None
+            db_password = None
+            mongo_uri = mongo_db_name = None
+            databricks_host = databricks_token = databricks_cluster_id = databricks_db_name = None
+            supabase_host = request.form.get('supabase_host')
+            supabase_port = request.form.get('supabase_port')
+            supabase_database = request.form.get('supabase_database')
+            supabase_user = request.form.get('supabase_user')
+            supabase_password = request.form.get('supabase_password')
+            supabase_api_key = request.form.get('supabase_api_key')
         else:
             selected_sheets = None
             selected_tables = json.dumps(selected_items)
@@ -372,10 +508,12 @@ def save_chatbot():
             db_username = request.form.get('db_username')
             db_password = request.form.get('db_password')
             mongo_uri = mongo_db_name = None
+            databricks_host = databricks_token = databricks_cluster_id = databricks_db_name = None
+            supabase_host = supabase_port = supabase_database = supabase_user = supabase_password = supabase_api_key = None
 
         cursor.execute("""
-            INSERT OR REPLACE INTO chatbots (id, username, chatbot_name, gemini_api_key, gemini_model, data_source, sheet_id, selected_sheets, service_account_json, db_host, db_port, db_name, db_username, db_password, selected_tables, mongo_uri, mongo_db_name, selected_collections)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO chatbots (id, username, chatbot_name, gemini_api_key, gemini_model, data_source, sheet_id, selected_sheets, service_account_json, db_host, db_port, db_name, db_username, db_password, selected_tables, mongo_uri, mongo_db_name, selected_collections, databricks_host, databricks_token, databricks_cluster_id, databricks_db_name, supabase_host, supabase_port, supabase_database, supabase_user, supabase_password, supabase_api_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             request.form['chatbot_id'],
             username,
@@ -394,7 +532,17 @@ def save_chatbot():
             selected_tables,
             mongo_uri,
             mongo_db_name,
-            selected_collections
+            selected_collections,
+            databricks_host,
+            databricks_token,
+            databricks_cluster_id,
+            databricks_db_name,
+            supabase_host,
+            supabase_port,
+            supabase_database,
+            supabase_user,
+            supabase_password,
+            supabase_api_key
         ))
         conn.commit()
         conn.close()

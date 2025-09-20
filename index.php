@@ -1,6 +1,7 @@
 <?php
 session_start();
 $API_BASE = "http://localhost:5001";
+// $API_BASE = "https://chatbot-1-v3ij.onrender.com";
 
 // Handle session set
 if(isset($_GET['set_session']) && !empty($_GET['username'])) {
@@ -140,6 +141,8 @@ if (isset($_GET['logout'])) {
                 <option value="postgresql">PostgreSQL</option>
                 <option value="neo4j">Neo4j</option>
                 <option value="mongodb">MongoDB</option>
+                <option value="databricks">Databricks</option>
+                <option value="supabase">Supabase</option>
             </select>
         </div>
 
@@ -205,6 +208,52 @@ if (isset($_GET['logout'])) {
             <div class="mb-3">
                 <label for="mongo_db_name">Database Name</label>
                 <input type="text" class="form-control" id="mongo_db_name">
+            </div>
+        </div>
+
+        <div id="databricksFields" style="display:none;">
+            <div class="mb-3">
+                <label for="databricks_host">Databricks Host</label>
+                <input type="text" class="form-control" id="databricks_host" placeholder="https://your-databricks-workspace.cloud.databricks.com">
+            </div>
+            <div class="mb-3">
+                <label for="databricks_token">Access Token</label>
+                <input type="password" class="form-control" id="databricks_token">
+            </div>
+            <div class="mb-3">
+                <label for="databricks_cluster_id">Cluster ID</label>
+                <input type="text" class="form-control" id="databricks_cluster_id">
+            </div>
+            <div class="mb-3">
+                <label for="databricks_db_name">Database Name</label>
+                <input type="text" class="form-control" id="databricks_db_name">
+            </div>
+        </div>
+
+        <div id="supabaseFields" style="display:none;">
+            <div class="mb-3">
+                <label for="supabase_host">Supabase Postgres Host</label>
+<input type="text" class="form-control" id="supabase_host" placeholder="db.<project>.supabase.com">
+            </div>
+            <div class="mb-3">
+                <label for="supabase_port">Supabase Postgres Port</label>
+                <input type="number" class="form-control" id="supabase_port" value="5432">
+            </div>
+            <div class="mb-3">
+                <label for="supabase_database">Supabase Postgres Database</label>
+                <input type="text" class="form-control" id="supabase_database" placeholder="postgres">
+            </div>
+            <div class="mb-3">
+                <label for="supabase_user">Supabase Postgres User</label>
+                <input type="text" class="form-control" id="supabase_user" placeholder="postgres">
+            </div>
+            <div class="mb-3">
+                <label for="supabase_password">Supabase Postgres Password</label>
+                <input type="password" class="form-control" id="supabase_password" placeholder="Your database password">
+            </div>
+            <div class="mb-3">
+                <label for="supabase_api_key">Supabase API Key</label>
+                <input type="password" class="form-control" id="supabase_api_key">
             </div>
         </div>
 
@@ -281,26 +330,50 @@ function onDataSourceChange() {
     const dbFields = document.getElementById('dbFields');
     const neo4jFields = document.getElementById('neo4jFields');
     const mongodbFields = document.getElementById('mongodbFields');
+    const databricksFields = document.getElementById('databricksFields');
+    const supabaseFields = document.getElementById('supabaseFields');
     if (dataSource === 'google_sheets') {
         googleFields.style.display = 'block';
         dbFields.style.display = 'none';
         neo4jFields.style.display = 'none';
         mongodbFields.style.display = 'none';
+        databricksFields.style.display = 'none';
+        supabaseFields.style.display = 'none';
     } else if (dataSource === 'neo4j') {
         googleFields.style.display = 'none';
         dbFields.style.display = 'none';
         neo4jFields.style.display = 'block';
         mongodbFields.style.display = 'none';
+        databricksFields.style.display = 'none';
+        supabaseFields.style.display = 'none';
     } else if (dataSource === 'mongodb') {
         googleFields.style.display = 'none';
         dbFields.style.display = 'none';
         neo4jFields.style.display = 'none';
         mongodbFields.style.display = 'block';
+        databricksFields.style.display = 'none';
+        supabaseFields.style.display = 'none';
+    } else if (dataSource === 'databricks') {
+        googleFields.style.display = 'none';
+        dbFields.style.display = 'none';
+        neo4jFields.style.display = 'none';
+        mongodbFields.style.display = 'none';
+        databricksFields.style.display = 'block';
+        supabaseFields.style.display = 'none';
+    } else if (dataSource === 'supabase') {
+        googleFields.style.display = 'none';
+        dbFields.style.display = 'none';
+        neo4jFields.style.display = 'none';
+        mongodbFields.style.display = 'none';
+        databricksFields.style.display = 'none';
+        supabaseFields.style.display = 'block';
     } else {
         googleFields.style.display = 'none';
         dbFields.style.display = 'block';
         neo4jFields.style.display = 'none';
         mongodbFields.style.display = 'none';
+        databricksFields.style.display = 'none';
+        supabaseFields.style.display = 'none';
         if (dataSource === 'mysql') {
             document.getElementById('db_port').value = '3306';
         } else if (dataSource === 'postgresql') {
@@ -312,33 +385,62 @@ function onDataSourceChange() {
 // Connect and list items
 async function connectSpreadsheet() {
     const dataSource = document.getElementById('data_source').value;
+
+    // Frontend validation for Supabase required fields
+    if (dataSource === 'supabase') {
+        const supabaseHost = document.getElementById('supabase_host').value.trim();
+        const supabaseDatabase = document.getElementById('supabase_database').value.trim();
+        const supabaseUser = document.getElementById('supabase_user').value.trim();
+        const supabasePassword = document.getElementById('supabase_password').value.trim();
+
+        if (!supabaseHost || !supabaseDatabase || !supabaseUser || !supabasePassword) {
+            alert("Please fill in all required Supabase fields: Host, Database, User, and Password.");
+            return;
+        }
+    }
+
     const data = new URLSearchParams({
         username:"<?= $_SESSION['username'] ?>",
-        chatbot_name: document.getElementById('chatbot_name').value,
-        chatbot_id: document.getElementById('chatbot_id').value,
-        gemini_api_key: document.getElementById('gemini_api_key').value,
-        gemini_model: document.getElementById('gemini_model').value,
+        chatbot_name: document.getElementById('chatbot_name').value.trim(),
+        chatbot_id: document.getElementById('chatbot_id').value.trim(),
+        gemini_api_key: document.getElementById('gemini_api_key').value.trim(),
+        gemini_model: document.getElementById('gemini_model').value.trim(),
         data_source: dataSource
     });
 
     if (dataSource === 'google_sheets') {
-        data.append('sheet_id', document.getElementById('sheet_id').value);
-        data.append('service_account_json', document.getElementById('service_account_json').value);
+        data.append('sheet_id', document.getElementById('sheet_id').value.trim());
+        data.append('service_account_json', document.getElementById('service_account_json').value.trim());
     } else if (dataSource === 'neo4j') {
-        data.append('neo4j_uri', document.getElementById('neo4j_uri').value);
-        data.append('neo4j_db_name', document.getElementById('neo4j_db_name').value);
-        data.append('neo4j_username', document.getElementById('neo4j_username').value);
-        data.append('neo4j_password', document.getElementById('neo4j_password').value);
+        data.append('neo4j_uri', document.getElementById('neo4j_uri').value.trim());
+        data.append('neo4j_db_name', document.getElementById('neo4j_db_name').value.trim());
+        data.append('neo4j_username', document.getElementById('neo4j_username').value.trim());
+        data.append('neo4j_password', document.getElementById('neo4j_password').value.trim());
     } else if (dataSource === 'mongodb') {
-        data.append('mongo_uri', document.getElementById('mongo_uri').value);
-        data.append('mongo_db_name', document.getElementById('mongo_db_name').value);
+        data.append('mongo_uri', document.getElementById('mongo_uri').value.trim());
+        data.append('mongo_db_name', document.getElementById('mongo_db_name').value.trim());
+    } else if (dataSource === 'databricks') {
+        data.append('databricks_host', document.getElementById('databricks_host').value.trim());
+        data.append('databricks_token', document.getElementById('databricks_token').value.trim());
+        data.append('databricks_cluster_id', document.getElementById('databricks_cluster_id').value.trim());
+        data.append('databricks_db_name', document.getElementById('databricks_db_name').value.trim());
+    } else if (dataSource === 'supabase') {
+        data.append('supabase_host', document.getElementById('supabase_host').value.trim());
+        data.append('supabase_port', document.getElementById('supabase_port').value.trim());
+        data.append('supabase_database', document.getElementById('supabase_database').value.trim());
+        data.append('supabase_user', document.getElementById('supabase_user').value.trim());
+        data.append('supabase_password', document.getElementById('supabase_password').value.trim());
+        data.append('supabase_api_key', document.getElementById('supabase_api_key').value.trim());
     } else {
-        data.append('db_host', document.getElementById('db_host').value);
-        data.append('db_port', document.getElementById('db_port').value);
-        data.append('db_name', document.getElementById('db_name').value);
-        data.append('db_username', document.getElementById('db_username').value);
-        data.append('db_password', document.getElementById('db_password').value);
+        data.append('db_host', document.getElementById('db_host').value.trim());
+        data.append('db_port', document.getElementById('db_port').value.trim());
+        data.append('db_name', document.getElementById('db_name').value.trim());
+        data.append('db_username', document.getElementById('db_username').value.trim());
+        data.append('db_password', document.getElementById('db_password').value.trim());
     }
+
+    // Debug: Log data being sent
+    console.log('Connecting with data:', Object.fromEntries(data));
 
     const res = await fetch(`${API_BASE}/set_credentials`, { method:'POST', body:data });
     if(!res.ok) {
@@ -434,6 +536,18 @@ async function saveChatbot() {
     } else if (dataSource === 'mongodb') {
         data.append('mongo_uri', document.getElementById('mongo_uri').value);
         data.append('mongo_db_name', document.getElementById('mongo_db_name').value);
+    } else if (dataSource === 'databricks') {
+        data.append('databricks_host', document.getElementById('databricks_host').value);
+        data.append('databricks_token', document.getElementById('databricks_token').value);
+        data.append('databricks_cluster_id', document.getElementById('databricks_cluster_id').value);
+        data.append('databricks_db_name', document.getElementById('databricks_db_name').value);
+    } else if (dataSource === 'supabase') {
+        data.append('supabase_host', document.getElementById('supabase_host').value);
+        data.append('supabase_port', document.getElementById('supabase_port').value);
+        data.append('supabase_database', document.getElementById('supabase_database').value);
+        data.append('supabase_user', document.getElementById('supabase_user').value);
+        data.append('supabase_password', document.getElementById('supabase_password').value);
+        data.append('supabase_api_key', document.getElementById('supabase_api_key').value);
     } else {
         data.append('db_host', document.getElementById('db_host').value);
         data.append('db_port', document.getElementById('db_port').value);
@@ -517,6 +631,18 @@ function fillForm(cb){
     } else if (cb.data_source === 'mongodb') {
         document.getElementById('mongo_uri').value = cb.mongo_uri;
         document.getElementById('mongo_db_name').value = cb.mongo_db_name;
+    } else if (cb.data_source === 'databricks') {
+        document.getElementById('databricks_host').value = cb.databricks_host;
+        document.getElementById('databricks_token').value = cb.databricks_token;
+        document.getElementById('databricks_cluster_id').value = cb.databricks_cluster_id;
+        document.getElementById('databricks_db_name').value = cb.databricks_db_name;
+    } else if (cb.data_source === 'supabase') {
+        document.getElementById('supabase_host').value = cb.supabase_host || '';
+        document.getElementById('supabase_port').value = cb.supabase_port || '5432';
+        document.getElementById('supabase_database').value = cb.supabase_database || '';
+        document.getElementById('supabase_user').value = cb.supabase_user || '';
+        document.getElementById('supabase_password').value = cb.supabase_password || '';
+        document.getElementById('supabase_api_key').value = cb.supabase_api_key || '';
     } else {
         document.getElementById('db_host').value = cb.db_host;
         document.getElementById('db_port').value = cb.db_port;

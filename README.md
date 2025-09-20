@@ -105,3 +105,31 @@ The project uses a **SQLite database** (`chatbots.db`) to store user credentials
 - Ensure your Google service account has **read access** to the specified spreadsheet.  
 - The Flask backend runs on port **8080** and the PHP frontend on port **8000**—make sure these ports are free.  
 - The chatbot uses **Gemini AI** to generate responses based on spreadsheet data.
+
+---
+
+## To Create the Docker Image
+
+```bash
+# Check running containers
+docker ps
+
+# Check all containers (including stopped)
+docker ps -a
+
+# View container logs
+docker logs -f myapp_container
+
+# Execute commands in running container
+docker exec -it myapp_container bash
+
+# Stop container
+docker stop myapp_container
+
+# Start stopped container
+docker start myapp_container
+
+docker buildx build --platform linux/amd64 -t shivamnishad/chatbot:latest .
+
+docker push shivamnishad/chatbot:latest
+```
