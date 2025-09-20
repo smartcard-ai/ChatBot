@@ -136,6 +136,10 @@ def init_db():
 init_db()
 
 # --- Signup ---
+@app.route("/")
+def home():
+    return "Hello, world!"
+
 @app.route('/signup', methods=['POST'])
 def signup():
     data = request.json
