@@ -188,6 +188,11 @@ docker run -d \
   -v $(pwd)/data:/app/data \
   chatbot:latest
 
+## To build and run the docker
+
+docker build -t chatbot:latest .
+docker run -d --name chatbot -p 8080:8080 chatbot:latest
+
 # Check running containers
 docker ps
 

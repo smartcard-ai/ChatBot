@@ -8,7 +8,7 @@ import psycopg2
 from neo4j import GraphDatabase
 from pymongo import MongoClient
 import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS, cross_origin
 from databricks import sql
 import certifi
@@ -43,7 +43,7 @@ def init_db():
             password TEXT
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chatbots (
             id TEXT PRIMARY KEY,
@@ -136,7 +136,7 @@ def init_db():
 init_db()
 
 # --- Signup ---
-@app.route("/", methods=['POST'])
+@app.route('/signup', methods=['POST'])
 def signup():
     data = request.json
     username = data.get('username')
@@ -155,27 +155,6 @@ def signup():
     conn.commit()
     conn.close()
     return jsonify({"success": True})
-
-
-# @app.route('/signup', methods=['POST'])
-# def signup():
-#     data = request.json
-#     username = data.get('username')
-#     password = data.get('password')
-#     if not username or not password:
-#         return jsonify({"success": False, "message": "Username and password required"}), 400
-
-#     conn = sqlite3.connect(DB_FILE)
-#     cursor = conn.cursor()
-#     cursor.execute("SELECT * FROM users WHERE username=?", (username,))
-#     if cursor.fetchone():
-#         conn.close()
-#         return jsonify({"success": False, "message": "User already exists"}), 400
-
-#     cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
-#     conn.commit()
-#     conn.close()
-#     return jsonify({"success": True})
 
 # --- Login ---
 @app.route('/login', methods=['POST'])
@@ -587,5 +566,68 @@ def list_chatbots():
     conn.close()
     return jsonify([dict(row) for row in rows])
 
+# --- Root route to serve frontend ---
+@app.route('/', methods=['GET'])
+def serve_frontend():
+    """Serve the frontend interface"""
+    try:
+        return send_from_directory('.', 'index.php')
+    except FileNotFoundError:
+        # Fallback to a simple HTML page if index.php is not found
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>ChatBot API</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
+                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                h1 { color: #333; text-align: center; }
+                .api-info { background: #f8f9fa; padding: 20px; border-left: 4px solid #007bff; margin: 20px 0; }
+                .endpoint { font-family: monospace; background: #e9ecef; padding: 2px 6px; border-radius: 3px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🤖 ChatBot API</h1>
+                <p>Welcome to the ChatBot API server. This API provides endpoints for creating and managing AI chatbots with various data sources.</p>
+
+                <div class="api-info">
+                    <h3>Available Endpoints:</h3>
+                    <ul>
+                        <li><span class="endpoint">POST /signup</span> - User registration</li>
+                        <li><span class="endpoint">POST /login</span> - User authentication</li>
+                        <li><span class="endpoint">POST /set_credentials</span> - Configure data source credentials</li>
+                        <li><span class="endpoint">POST /set_items</span> - Select data items to chat with</li>
+                        <li><span class="endpoint">POST /chat</span> - Send messages to the chatbot</li>
+                        <li><span class="endpoint">POST /save_chatbot</span> - Save chatbot configuration</li>
+                        <li><span class="endpoint">GET /list_chatbots</span> - List saved chatbots</li>
+                    </ul>
+                </div>
+
+                <div class="api-info">
+                    <h3>Supported Data Sources:</h3>
+                    <ul>
+                        <li>Google Sheets</li>
+                        <li>MySQL</li>
+                        <li>PostgreSQL</li>
+                        <li>Neo4j</li>
+                        <li>MongoDB</li>
+                        <li>Databricks</li>
+                        <li>Supabase</li>
+                    </ul>
+                </div>
+
+                <p><strong>Server Status:</strong> <span style="color: #28a745;">✅ Running</span></p>
+                <p><strong>Port:</strong> 5001</p>
+                <p><strong>Debug Mode:</strong> Enabled</p>
+            </div>
+        </body>
+        </html>
+        """
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    # Use 127.0.0.1 instead of 0.0.0.0 to avoid conflicts with nginx
+    app.run(debug=True, host='127.0.0.1', port=5001)

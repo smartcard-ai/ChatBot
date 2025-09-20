@@ -1,5 +1,5 @@
 # Multi-stage build for optimized image size
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 # Install system dependencies for building Python packages
 RUN apt-get update && apt-get install -y \
@@ -57,8 +57,9 @@ ENV FLASK_ENV=production
 # Create directory for SQLite database
 RUN mkdir -p /app/data && chown app:app /app/data
 
-# Create nginx pid directory
-RUN mkdir -p /var/run/nginx && chown app:app /var/run/nginx
+# Create nginx directories with proper permissions
+RUN mkdir -p /var/run/nginx /var/lib/nginx /var/log/nginx && \
+    chown -R app:app /var/run/nginx /var/lib/nginx /var/log/nginx
 
 # Switch to non-root user
 USER app
