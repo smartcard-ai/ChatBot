@@ -136,7 +136,7 @@ def init_db():
 init_db()
 
 # --- Signup ---
-@app.route("/",method=['POST'])
+@app.route("/", methods=['POST'])
 def signup():
     data = request.json
     username = data.get('username')
