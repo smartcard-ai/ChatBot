@@ -136,9 +136,26 @@ def init_db():
 init_db()
 
 # --- Signup ---
-@app.route("/")
-def home():
-    return "Hello, world!"
+@app.route("/",method=['POST'])
+def signup():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    if not username or not password:
+        return jsonify({"success": False, "message": "Username and password required"}), 400
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username=?", (username,))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({"success": False, "message": "User already exists"}), 400
+
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
 
 @app.route('/signup', methods=['POST'])
 def signup():
